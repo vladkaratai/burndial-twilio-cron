@@ -117,9 +117,11 @@ app.post('/incoming-call', async (req, res) => {
 app.post('/dial-status', async (req, res) => {
   const callSid = req.body.CallSid;
   const from = req.body.From;
-  const dialCallStatus = req.body.DialCallStatus; // answered, completed, busy и т.д.
+  const dialCallStatus = req.body.DialCallStatus;
+  const dialCallDuration = req.body.DialCallDuration;
 
-  // списание и запуск таймера только если разговор реально начался
+  console.log(`[DIAL-STATUS] CallSid=${callSid}, From=${from}, Status=${dialCallStatus}, Duration=${dialCallDuration}`);
+
   if (dialCallStatus !== 'answered') {
     console.log(`[CALL] DialCallStatus=${dialCallStatus}, таймер не запускаем`);
     return res.sendStatus(200);
