@@ -101,12 +101,13 @@ app.post('/incoming-call', async (req, res) => {
 
     twimlResponse.say('Connecting you to the creator...');
     twimlResponse.dial(
-      { 
-        callerId: process.env.TWILIO_NUMBER,
-        method: 'POST' 
-      },
-      twimlResponse.client('C')
-    );
+    { 
+      callerId: process.env.TWILIO_NUMBER, 
+      action: '/post-call',          // опционально: после завершения звонка
+      method: 'POST' 
+    },
+    'client:C'                      // identity клиента C
+  );
 
     return res.type('text/xml').send(twimlResponse.toString());
 
@@ -117,7 +118,10 @@ app.post('/incoming-call', async (req, res) => {
     return res.type('text/xml').send(twimlResponse.toString());
   }
 });
-
+app.post('/post-call', (req, res) => {
+  console.log('Call ended', req.body);
+  res.sendStatus(200);
+});
 // === 3. Статус звонка для поминутного списания ===
 app.post('/call-status', async (req, res) => {
   const callSid = req.body.CallSid;
