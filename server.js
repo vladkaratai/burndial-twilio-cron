@@ -138,11 +138,8 @@ app.post('/incoming-call', async (req, res) => {
 
     // Отвечаем звонящему: "ждите"
     twimlResponse.say('Connecting you to the creator. Please wait.');
-    // twimlResponse.pause({ length: 45 }); // даём время на подключение
-    twimlResponse.dial(
-  { action: '/post-call', callerId: process.env.TWILIO_NUMBER },
-  'client:C'
-);
+    twimlResponse.pause({ length: 45 }); // даём время на подключение
+   
 
     return res.type('text/xml').send(twimlResponse.toString());
 
@@ -159,7 +156,11 @@ app.post('/voice-handler-for-c', (req, res) => {
   const twimlResponse = new twiml.VoiceResponse();
   // Можно просто молчать — клиент сам управляет звонком
   // Или сказать что-то
-  twimlResponse.say('You have an incoming call from a listener.');
+  // twimlResponse.say('You have an incoming call from a listener.');
+   twimlResponse.dial(
+  { action: '/post-call', callerId: process.env.TWILIO_NUMBER },
+  'client:C'
+);
   res.type('text/xml').send(twimlResponse.toString());
 });
 
