@@ -2,7 +2,7 @@ require('dotenv').config();
 const express = require('express');
 const bodyParser = require('body-parser');
 const { twiml } = require('twilio');
-// const { AccessToken, VoiceGrant } = require('twilio').jwt;
+// const { AccessToken, VoiceGrant } = require('twilio').jwt;йцуйцуsdas
 const twilio = require('twilio');
 const AccessToken = twilio.jwt.AccessToken;
 const VoiceGrant = AccessToken.VoiceGrant;
@@ -112,6 +112,7 @@ app.post('/incoming-call', async (req, res) => {
       callerId: process.env.TWILIO_NUMBER,
       action: `${DOMAIN_NAME}/dial-status`, // continuation
       method: 'POST',
+      timeout: 60
   
     });
     dial.client('C');
