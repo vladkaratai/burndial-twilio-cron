@@ -77,6 +77,7 @@ app.post('/incoming-call', async (req, res) => {
       callerId: process.env.TWILIO_NUMBER,
       action: `${DOMAIN_NAME}/dial-status`, // continuation
       method: 'POST',
+      answerOnBridge: true, 
     });
     dial.number(targetNumber);
 
@@ -90,12 +91,41 @@ app.post('/incoming-call', async (req, res) => {
   }
 });
 
+// app.post('/dial-status', async (req, res) => {
+//   const callSid = req.body.CallSid;
+//   const from = req.body.From;
+
+//   console.log(`[CALL] Соединение установлено. CallSid=${callSid}, A=${from}`);
+
+//   await chargeUser(from);
+
+//   const intervalId = setInterval(async () => {
+//     const credits = await getUserCredits(from);
+//     if (credits >= 3) {
+//       await chargeUser(from);
+//     } else {
+//       console.log(`[CALL] У ${from} кончились кредиты. Завершаем звонок ${callSid}`);
+//       await client.calls(callSid).update({ status: 'completed' });
+//       clearInterval(intervalId);
+//       activeIntervals.delete(callSid);
+//     }
+//   }, 60 * 1000);
+
+//   activeIntervals.set(callSid, intervalId);
+//   return res.sendStatus(200);
+// });
 app.post('/dial-status', async (req, res) => {
   const callSid = req.body.CallSid;
   const from = req.body.From;
+  const dialCallStatus = req.body.DialCallStatus; // answered, completed, busy и т.д.
 
-  console.log(`[CALL] Соединение установлено. CallSid=${callSid}, A=${from}`);
+  // списание и запуск таймера только если разговор реально начался
+  if (dialCallStatus !== 'answered') {
+    console.log(`[CALL] DialCallStatus=${dialCallStatus}, таймер не запускаем`);
+    return res.sendStatus(200);
+  }
 
+  console.log(`[CALL] Разговор начался. CallSid=${callSid}, A=${from}`);
   await chargeUser(from);
 
   const intervalId = setInterval(async () => {
@@ -111,7 +141,7 @@ app.post('/dial-status', async (req, res) => {
   }, 60 * 1000);
 
   activeIntervals.set(callSid, intervalId);
-  return res.sendStatus(200);
+  res.sendStatus(200);
 });
 
 app.post('/call-status', (req, res) => {
