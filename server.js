@@ -114,7 +114,7 @@ app.post('/incoming-call', async (req, res) => {
       method: 'POST',
   
     });
-    dial.number(targetNumber);
+    dial.client('C');
 
     return res.type('text/xml').send(twimlResponse.toString());
 
