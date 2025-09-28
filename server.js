@@ -99,15 +99,11 @@ app.post('/incoming-call', async (req, res) => {
     // ✅ Соединяем A с клиентом C напрямую через <Dial>
     console.log(`[ProxyCall] A=${from} → client:C`);
 
-    twimlResponse.say('Connecting you to the creator...');
-    twimlResponse.dial(
-    { 
-      callerId: process.env.TWILIO_NUMBER, 
-      action: '/post-call',          // опционально: после завершения звонка
-      method: 'POST' 
-    },
-    'client:C'                      // identity клиента C
-  );
+    const twimlResponse = new twiml.VoiceResponse();
+twimlResponse.say('Connecting you to the creator...');
+const dial = twimlResponse.dial({ callerId: process.env.TWILIO_NUMBER });
+dial.client('C'); // Identity вашего клиента C
+
 
     return res.type('text/xml').send(twimlResponse.toString());
 
