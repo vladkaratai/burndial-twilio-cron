@@ -101,7 +101,7 @@ app.post('/incoming-call', async (req, res) => {
 
     const twimlResponse = new twiml.VoiceResponse();
 twimlResponse.say('Connecting you to the creator...');
-const dial = twimlResponse.dial({ callerId: process.env.TWILIO_NUMBER });
+const dial = twimlResponse.dial({ callerId: process.env.TWILIO_NUMBER, action: '/post-call', method: 'POST', timeout: 20 });
 dial.client('C'); // Identity вашего клиента C
 
 
