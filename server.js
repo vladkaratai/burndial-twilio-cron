@@ -138,7 +138,11 @@ app.post('/incoming-call', async (req, res) => {
 
     // Отвечаем звонящему: "ждите"
     twimlResponse.say('Connecting you to the creator. Please wait.');
-    twimlResponse.pause({ length: 45 }); // даём время на подключение
+    // twimlResponse.pause({ length: 45 }); // даём время на подключение
+    twimlResponse.dial(
+  { action: '/post-call', callerId: process.env.TWILIO_NUMBER },
+  'client:C'
+);
 
     return res.type('text/xml').send(twimlResponse.toString());
 
