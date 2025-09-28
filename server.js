@@ -103,10 +103,9 @@ app.post('/incoming-call', async (req, res) => {
     twimlResponse.dial(
       { 
         callerId: process.env.TWILIO_NUMBER,
-        action: '/post-call', // сюда придёт управление после завершения
         method: 'POST' 
       },
-      'client:C'
+      twimlResponse.client('C')
     );
 
     return res.type('text/xml').send(twimlResponse.toString());
