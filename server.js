@@ -2,6 +2,8 @@ require('dotenv').config();
 const express = require('express');
 const bodyParser = require('body-parser');
 const { twiml } = require('twilio');
+const { AccessToken, VoiceGrant } = require('twilio').jwt;
+
 const client = require('twilio')(process.env.TWILIO_SID, process.env.TWILIO_TOKEN);
 const { createClient } = require('@supabase/supabase-js');
 
@@ -11,6 +13,24 @@ const app = express();
 app.use(bodyParser.urlencoded({ extended: false }));
 
 const activeIntervals = new Map();
+
+app.get('/token-c', async (req, res) => {
+
+  const token = new AccessToken(
+    process.env.TWILIO_SID,
+    process.env.TWILIO_API_KEY,      
+    process.env.TWILIO_API_SECRET    
+  );
+
+  token.identity = 'C'
+
+  const grant = new VoiceGrant({
+    incomingAllow: true,
+  });
+  token.addGrant(grant);
+
+  res.json({ token: token.toJwt() });
+});
 
 app.post('/incoming-call', async (req, res) => {
   const from = req.body.From;   // A
