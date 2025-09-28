@@ -164,7 +164,9 @@ async function getUserCredits(phone) {
 }
 
 async function chargeUser(phone) {
-  const price = 3; 
+  const price = 3;
+
+  // Получаем пользователя
   const { data: user, error: userErr } = await supabase
     .from('customer_balances')
     .select('id, balance')
@@ -172,19 +174,27 @@ async function chargeUser(phone) {
     .single();
 
   if (userErr || !user) {
-    console.error('User not found for charging', userErr);
-    return;
+    console.error('[SUPABASE] User not found for charging', userErr);
+    return false;
   }
 
   const newBalance = Math.max(0, Number(user.balance) - price);
 
-  await supabase
+  // Списываем кредиты
+  const { data, error } = await supabase
     .from('customer_balances')
     .update({ balance: newBalance })
     .eq('id', user.id);
 
+  if (error) {
+    console.error('[SUPABASE] Failed to update balance', error);
+    return false;
+  }
+
   console.log(`[CREDITS] Списано ${price} у ${phone}, остаток ${newBalance}`);
+  return true;
 }
+
 
 app.listen(process.env.PORT || 3000, () => {
   console.log(`🚀 Server запущен на http://localhost:${process.env.PORT || 3000}`);
