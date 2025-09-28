@@ -44,7 +44,7 @@ app.get('/token-c', async (req, res) => {
     const grant = new VoiceGrant({ incomingAllow: true });
     token.addGrant(grant);
 
-    res.json({ token: token.toJwt() });
+  return  res.json({ token: token.toJwt() });
   
 });
 app.post('/incoming-call', async (req, res) => {
