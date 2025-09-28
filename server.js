@@ -15,23 +15,32 @@ app.use(bodyParser.urlencoded({ extended: false }));
 const activeIntervals = new Map();
 
 app.get('/token-c', async (req, res) => {
+  // Разрешаем CORS
+  res.header('Access-Control-Allow-Origin', '*');
+  res.header('Access-Control-Allow-Methods', 'GET');
+  res.header('Access-Control-Allow-Headers', 'Content-Type');
 
-  const token = new AccessToken(
-    process.env.TWILIO_SID,
-    process.env.TWILIO_API_KEY,      
-    process.env.TWILIO_API_SECRET    
-  );
+  const { creator_id } = req.query;
 
-  token.identity = 'C'
+  if (!creator_id) {
+    return res.status(400).json({ error: 'creator_id is required' });
+  }
 
-  const grant = new VoiceGrant({
-    incomingAllow: true,
-  });
-  token.addGrant(grant);
+  
 
-  res.json({ token: token.toJwt() });
+    const token = new AccessToken(
+      process.env.TWILIO_SID,
+      process.env.TWILIO_API_KEY,
+      process.env.TWILIO_API_SECRET
+    );
+    token.identity = 'C'
+
+    const grant = new VoiceGrant({ incomingAllow: true });
+    token.addGrant(grant);
+
+    res.json({ token: token.toJwt() });
+  
 });
-
 app.post('/incoming-call', async (req, res) => {
   const from = req.body.From;   // A
   const calledNumber = req.body.To; // B
