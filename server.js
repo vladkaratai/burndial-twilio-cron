@@ -77,7 +77,7 @@ app.post('/incoming-call', async (req, res) => {
       callerId: process.env.TWILIO_NUMBER,
       action: `${DOMAIN_NAME}/dial-status`, // continuation
       method: 'POST',
-      answerOnBridge: true, 
+  
     });
     dial.number(targetNumber);
 
