@@ -195,7 +195,7 @@ app.post('/call-status-handler', async (req, res) => {
           message: 'You have one minute left. Please top up your balance.'
         });
       }
-    }, 60000); // реальный биллинг 1 минута
+    }, 30000); // реальный биллинг 1 минута
 
     activeIntervals.set(CallSid, intervalId);
   }
