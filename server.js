@@ -206,6 +206,19 @@ app.post('/call-status-handler', async (req, res) => {
         });
       }
 
+      if (user && Number(user.balance) <= 0) {
+    try {
+      await client.messages.create({
+        body: 'Your credits have run out. Please top up your balance at: https://burndial.lovable.app/demo/topup',
+        from: process.env.TWILIO_NUMBER,
+        to: caller
+      });
+      console.log(`[SMS] Sent zero-credit warning to ${caller}`);
+    } catch (smsErr) {
+      console.error('[SMS] Failed to send zero-credit SMS:', smsErr);
+    }
+  }
+
     }, 30000); 
 
     activeIntervals.set(CallSid, intervalId);
