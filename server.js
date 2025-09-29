@@ -109,6 +109,67 @@ app.post('/call-status', (req, res) => {
       console.log('Call initiated - ringing started');
       // Call initiated
       break;
+    case 'answered'
+        console.log('Call answered by client C!');
+
+  // Получаем номер клиента A из параметров запроса
+  const caller = req.query.caller;
+  if (!caller) {
+    console.log('Caller number not provided in query params');
+    break;
+  }
+
+  // Проверяем баланс клиента A
+  try {
+    const {  user, error: userErr } = await supabase
+      .from('customer_balances')
+      .select('id, balance')
+      .eq('phone_number', caller)
+      .single();
+
+    if (userErr || !user) {
+      console.log(`[BALANCE CHECK] User not found for caller: ${caller}`, userErr);
+      // Можно повесить трубку, если пользователь не найден
+      // Но обычно это уже проверяется в /incoming-call
+    } else {
+      const balance = Number(user.balance);
+      console.log(`[BALANCE CHECK] Caller ${caller} has balance: ${balance}`);
+      
+      // Можно добавить логику оповещения о балансе или проверки минимального баланса
+      if (balance < 1) { // минимальный порог
+        console.log(`[BALANCE CHECK] Warning: Caller ${caller} has very low balance: ${balance}`);
+        // Здесь можно отправить уведомление пользователю о низком балансе
+      }
+    }
+  } catch (error) {
+    console.error('[BALANCE CHECK] Error checking balance:', error);
+  }
+
+  // Это место, где можно начать таймер для периодического списания
+  const callSid = req.body.CallSid;
+  const pricePerMinute = Number(req.query.price) || 3;
+
+  // Здесь можно запустить интервал для списания каждые 60 секунд (или 5 секунд для теста)
+  if (!activeIntervals.has(callSid)) {
+    const intervalId = setInterval(async () => {
+      console.log(`[Billing Tick] Charging ${pricePerMinute} credits for call ${callSid}`);
+      
+      // Списание средств за прошедшее время
+      const charged = await chargeUser(caller, pricePerMinute);
+      if (!charged) {
+        console.log(`[Billing] Failed to charge user ${caller}, hanging up call`);
+        // Здесь можно повесить трубку через Twilio API
+        try {
+          await client.calls(callSid).update({ status: 'completed' });
+        } catch (hangupError) {
+          console.error('Error hanging up call:', hangupError);
+        }
+      }
+    }, 60000); // 60 секунд для реального биллинга, 5000 для теста
+
+    activeIntervals.set(callSid, intervalId);
+  }
+      break;
     case 'ringing':
       console.log('Call is ringing - waiting for answer');
       // Call is ringing
