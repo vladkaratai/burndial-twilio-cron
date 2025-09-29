@@ -17,7 +17,14 @@ const supabase = createClient(
 );
 
 const app = express();
-app.use(cors());
+const corsOptions = {
+  origin: [
+    'http://localhost:5173',
+    'https://burndial-twilio-cron.onrender.com'
+  ],
+  credentials: true
+};
+app.use(cors(corsOptions));
 app.use(bodyParser.urlencoded({ extended: false }));
 app.use(bodyParser.json());
 
@@ -25,17 +32,29 @@ const activeIntervals = new Map();
 const subscribers = new Set();
 
 app.get('/events', (req, res) => {
+  // Установите все заголовки до flushHeaders()
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache');
   res.setHeader('Connection', 'keep-alive');
-    res.setHeader('Access-Control-Allow-Origin', '*'); 
+  res.setHeader('Access-Control-Allow-Origin', '*'); // или конкретный origin
+  res.setHeader('Access-Control-Allow-Credentials', 'true');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  
+  // Важно: flushHeaders() должен быть последним в этой цепочке
   res.flushHeaders();
 
+  console.log('New SSE client connected');
   subscribers.add(res);
+  
+  // Отправка тестового сообщения
+  res.write(`data: ${JSON.stringify({type: 'connected', message: 'SSE connected'})}\n\n`);
+
   req.on('close', () => {
+    console.log('SSE client disconnected');
     subscribers.delete(res);
   });
 });
+
 
 function broadcastToC(message) {
   for (const res of subscribers) {
