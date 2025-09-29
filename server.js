@@ -110,9 +110,10 @@ app.post('/incoming-call', async (req, res) => {
       callerId: process.env.TWILIO_NUMBER,
       timeout: 60,
       action: '/dial-action' // сюда придет CallSid звонка A→C
-    });
-
-    dial.client('C');
+    }).client({
+        statusCallback: 'https://burndial-twilio-cron.onrender.com/call-status',
+        statusCallbackEvent: ['initiated', 'ringing', 'answered', 'completed']
+      }, 'C');
 
     return res.type('text/xml').send(twimlResponse.toString());
   } catch (err) {
