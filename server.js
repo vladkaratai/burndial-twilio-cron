@@ -47,7 +47,6 @@ app.get('/token-c', async (req, res) => {
 app.post('/incoming-call', async (req, res) => {
   const from = req.body.From;
   const calledNumber = req.body.To;
-  const DOMAIN_NAME = process.env.DOMAIN_NAME;
 
   const twimlResponse = new twiml.VoiceResponse();
 
@@ -99,11 +98,13 @@ app.post('/incoming-call', async (req, res) => {
     // ✅ Соединяем A с клиентом C напрямую через <Dial>
     console.log(`[ProxyCall] A=${from} → client:C`);
 
-    const twimlResponse = new twiml.VoiceResponse();
-twimlResponse.say('Connecting you to the creator...');
-const dial = twimlResponse.dial({ callerId: process.env.TWILIO_NUMBER, action: '/post-call', method: 'POST', timeout: 0 });
-dial.client('C'); // Identity вашего клиента C
-
+    twimlResponse.say('Connecting you to the creator...');
+    const dial = twimlResponse.dial({
+      callerId: process.env.TWILIO_NUMBER,
+      timeout: 60,
+      record: 'do-not-record'
+    });
+    dial.client('C');
 
     return res.type('text/xml').send(twimlResponse.toString());
 
@@ -113,56 +114,6 @@ dial.client('C'); // Identity вашего клиента C
     twimlResponse.hangup();
     return res.type('text/xml').send(twimlResponse.toString());
   }
-});
-app.post('/post-call', (req, res) => {
-  console.log('Call ended', req.body);
-  res.sendStatus(200);
-});
-// === 3. Статус звонка для поминутного списания ===
-app.post('/call-status', async (req, res) => {
-  const callSid = req.body.CallSid;
-  const callStatus = req.body.CallStatus;
-  const caller = req.body.From; // номер звонящего
-  const pricePerInterval = 3; // 3 кредита за 30 секунд
-  const intervalMs = 30 * 1000; // 30 секунд
-
-  console.log(`[CALL-STATUS] CallSid=${callSid}, Status=${callStatus}, Caller=${caller}`);
-
-  if (callStatus === 'answered' || callStatus === 'in-progress') {
-    // Снимаем сразу первый платёж
-    const initialCharge = await chargeUser(caller, pricePerInterval);
-    if (!initialCharge) {
-      console.log(`[CALL] У ${caller} нет кредитов. Завершаем звонок ${callSid}`);
-      try { await client.calls(callSid).update({ status: 'completed' }); } catch(e){ console.warn(e.message); }
-      return res.sendStatus(200);
-    }
-
-    // Таймер списания каждые 30 секунд
-    const intervalId = setInterval(async () => {
-      const credits = await getUserCredits(caller);
-      if (credits >= pricePerInterval) {
-        await chargeUser(caller, pricePerInterval);
-      } else {
-        console.log(`[CALL] У ${caller} кончились кредиты. Завершаем звонок ${callSid}`);
-        try { await client.calls(callSid).update({ status: 'completed' }); } catch(e){ console.warn(e.message); }
-        clearInterval(intervalId);
-        activeIntervals.delete(callSid);
-      }
-    }, intervalMs);
-
-    activeIntervals.set(callSid, intervalId);
-  }
-
-  // Завершение звонка
-  if (['completed', 'busy', 'no-answer', 'failed'].includes(callStatus)) {
-    if (activeIntervals.has(callSid)) {
-      clearInterval(activeIntervals.get(callSid));
-      activeIntervals.delete(callSid);
-      console.log(`[CALL] CallSid=${callSid} завершён. Таймер удалён.`);
-    }
-  }
-
-  res.sendStatus(200);
 });
 
 // === Вспомогательные функции ===
@@ -189,8 +140,6 @@ async function chargeUser(phone, price = 3) {
   if (Number(user.balance) < price) return false;
   const newBalance = Number(user.balance) - price;
 
-  // const newBalance = Math.max(0, Number(user.balance) - price);
-
   const { error } = await supabase
     .from('customer_balances')
     .update({ balance: newBalance })
@@ -204,6 +153,46 @@ async function chargeUser(phone, price = 3) {
   console.log(`[CREDITS] Списано ${price} у ${phone}, остаток ${newBalance}`);
   return true;
 }
+
+// === НОВЫЙ РОУТ ===
+app.post('/start-call', async (req, res) => {
+  const { callSid, caller, pricePerInterval = 3 } = req.body;
+  const intervalMs = 30 * 1000; // 30 секунд
+
+  // Проверяем баланс
+  const balance = await getUserCredits(caller);
+  if (balance < pricePerInterval) {
+    return res.status(402).json({ error: 'Недостаточно кредитов' });
+  }
+
+  // Запускаем таймер списания
+  const intervalId = setInterval(async () => {
+    const balance = await getUserCredits('+14482360473');
+    if (balance >= pricePerInterval) {
+      await chargeUser('+14482360473', pricePerInterval);
+      console.log(`Списано ${pricePerInterval} кредитов у ${caller}`);
+    } else {
+      console.log(`Недостаточно кредитов у ${'+14482360473'}. Завершаем звонок.`);
+      clearInterval(intervalId);
+      activeIntervals.delete(callSid);
+      // Завершить звонок (необязательно)
+    }
+  }, intervalMs);
+
+  activeIntervals.set(callSid, intervalId);
+  res.json({ success: true });
+});
+
+// === ЗАВЕРШЕНИЕ ЗВОНКА ===
+app.post('/end-call', (req, res) => {
+  const { callSid } = req.body;
+  if (activeIntervals.has(callSid)) {
+    clearInterval(activeIntervals.get(callSid));
+    activeIntervals.delete(callSid);
+    console.log(`Звонок ${callSid} завершён, таймер остановлен.`);
+  }
+  res.sendStatus(200);
+});
 
 // === Запуск сервера ===
 const PORT = process.env.PORT || 3000;
