@@ -189,7 +189,7 @@ async function chargeUser(phone, amount = 3) {
   console.log(`[CREDITS] Charged ${amount} from ${phone}, new balance is ${newBalance}`);
   return true;
 }
-\const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`:rocket: Server running on http://localhost:${PORT}`);
 });
