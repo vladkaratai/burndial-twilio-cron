@@ -21,9 +21,12 @@ app.use(cors());
 app.use(bodyParser.urlencoded({ extended: false }));
 app.use(bodyParser.json());
 
+// Активные интервалы и CallSid обеих сторон
 const activeIntervals = new Map();
-const subscribers = new Set();
+const activeCalls = new Map(); // key = parentCallSid, value = {a: CallSidA, c: CallSidC}
 
+// SSE для уведомлений C (WebRTC)
+const subscribers = new Set();
 app.get('/events', (req, res) => {
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache');
@@ -31,9 +34,7 @@ app.get('/events', (req, res) => {
   res.flushHeaders();
 
   subscribers.add(res);
-  req.on('close', () => {
-    subscribers.delete(res);
-  });
+  req.on('close', () => subscribers.delete(res));
 });
 
 function broadcastToC(message) {
@@ -41,6 +42,8 @@ function broadcastToC(message) {
     res.write(`data: ${JSON.stringify(message)}\n\n`);
   }
 }
+
+// Токен для клиента C
 app.get('/token-c', async (req, res) => {
   res.header('Access-Control-Allow-Origin', '*');
   const { creator_id } = req.query;
@@ -60,12 +63,10 @@ app.get('/token-c', async (req, res) => {
   }
 });
 
-
+// Входящий звонок от A
 app.post('/incoming-call', async (req, res) => {
-  const from = req.body.From; 
-  const calledNumber = req.body.To; 
-  // const parentCallSid = req.body.CallSid;
-
+  const from = req.body.From;
+  const calledNumber = req.body.To;
   const twimlResponse = new twiml.VoiceResponse();
 
   try {
@@ -105,16 +106,15 @@ app.post('/incoming-call', async (req, res) => {
 
     console.log(`[ProxyCall] A=${from} → client:C. Setting up status callback.`);
 
-    twimlResponse.dial({
+    const dial = twimlResponse.dial({
       callerId: process.env.TWILIO_NUMBER,
-      timeout: 60
-    }).client({
-      statusCallback: `https://burndial-twilio-cron.onrender.com/call-status-handler?caller=${encodeURIComponent(from)}&price=${pricePerMinute}`,
-      statusCallbackEvent: ['initiated', 'ringing', 'answered', 'completed']
-    }, 'C');
+      timeout: 60,
+      action: '/dial-action' // сюда придет CallSid звонка A→C
+    });
+
+    dial.client('C');
 
     return res.type('text/xml').send(twimlResponse.toString());
-
   } catch (err) {
     console.error('Error in /incoming-call:', err);
     twimlResponse.say('A system error occurred.');
@@ -123,7 +123,15 @@ app.post('/incoming-call', async (req, res) => {
   }
 });
 
+// Получение CallSid звонка A→C
+app.post('/dial-action', (req, res) => {
+  const parentCallSid = req.body.CallSid; // звонок A→Twilio
+  const dialCallSid = req.body.DialCallSid; // звонок Twilio→C
+  activeCalls.set(parentCallSid, { a: parentCallSid, c: dialCallSid });
+  res.sendStatus(200);
+});
 
+// Обработка статусов звонка
 app.post('/call-status-handler', async (req, res) => {
   const { CallSid, CallStatus } = req.body;
   const { caller, price } = req.query;
@@ -137,28 +145,30 @@ app.post('/call-status-handler', async (req, res) => {
     const charged = await chargeUser(caller, pricePerMinute);
     if (!charged) {
       console.log(`[Billing] Not enough balance for first charge. Hanging up.`);
-      try {
-        await client.calls(CallSid).update({ status: 'completed' });
-      } catch (err) {
-        console.error('Error hanging up call:', err);
-      }
+      try { await client.calls(CallSid).update({ status: 'completed' }); } 
+      catch (err) { console.error('Error hanging up call:', err); }
       return res.sendStatus(200);
     }
 
     const intervalId = setInterval(async () => {
-      console.log(`[Billing Tick] Charging ${pricePerMinute} credits for call ${CallSid}`);
       const ok = await chargeUser(caller, pricePerMinute);
       if (!ok) {
         console.log(`[Billing] Balance empty. Hanging up call ${CallSid}.`);
         clearInterval(intervalId);
         activeIntervals.delete(CallSid);
-        try {
-          await client.calls(CallSid).update({ status: 'completed' });
-        } catch (err) {
-          console.error('Error hanging up call:', err);
+        const callData = activeCalls.get(CallSid);
+        if (callData) {
+          try {
+            await client.calls(callData.a).update({ status: 'completed' });
+            await client.calls(callData.c).update({ status: 'completed' });
+          } catch (err) {
+            console.error('Error hanging up calls:', err);
+          }
         }
         return;
       }
+
+      // Проверяем баланс и проигрываем TTS при 6 кредитах
       const { data: user } = await supabase
         .from('customer_balances')
         .select('balance')
@@ -167,24 +177,24 @@ app.post('/call-status-handler', async (req, res) => {
 
       if (user && Number(user.balance) === 6) {
         console.log(`[ALERT] Caller ${caller} has only 6 credits.`);
+        const callData = activeCalls.get(CallSid);
+        const warningUrl = 'https://jowevbtruckcidckpzjj.supabase.co/storage/v1/object/public/burdial-audio/2%20min%20warning.mp3';
 
-        // A (номер телефона) услышит TTS
-        try {
-          await client.calls(CallSid).update({
-            twiml: '<Response><Say voice="alice">You have one minute left. Please top up your balance.</Say></Response>'
-          });
-        } catch (err) {
-          console.error('Error playing TTS for A:', err);
+        if (callData) {
+          try {
+            await client.calls(callData.a).play({ url: warningUrl });
+            await client.calls(callData.c).play({ url: warningUrl });
+          } catch (err) {
+            console.error('Error playing TTS:', err);
+          }
         }
 
-        // C (WebRTC клиент) получит SSE
         broadcastToC({
           type: 'warning',
           message: 'You have one minute left. Please top up your balance.'
         });
       }
-
-    }, 30000); 
+    }, 60000); // реальный биллинг 1 минута
 
     activeIntervals.set(CallSid, intervalId);
   }
@@ -195,11 +205,13 @@ app.post('/call-status-handler', async (req, res) => {
       activeIntervals.delete(CallSid);
       console.log(`[Timer] Call ${CallSid} ended. Billing timer stopped.`);
     }
+    activeCalls.delete(CallSid);
   }
 
   res.sendStatus(200);
 });
 
+// Списание средств
 async function chargeUser(phone, amount = 3) {
   const { data: user, error: userErr } = await supabase
     .from('customer_balances')
