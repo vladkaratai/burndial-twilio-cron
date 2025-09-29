@@ -3,6 +3,8 @@ const express = require('express');
 const bodyParser = require('body-parser');
 const { twiml } = require('twilio');
 const twilio = require('twilio');
+const cors = require('cors');
+app.use(cors());
 const AccessToken = twilio.jwt.AccessToken;
 const VoiceGrant = AccessToken.VoiceGrant;
 
@@ -155,7 +157,7 @@ async function chargeUser(phone, price = 3) {
 }
 
 // === НОВЫЙ РОУТ ===
-app.post('/start-call', async (req, res) => {
+app.post('/start-call',cors(), async (req, res) => {
   console.log('📩 /start-call body:', req.body);
   const { callSid, caller, pricePerInterval = 3 } = req.body;
   const intervalMs = 30 * 1000; // 30 секунд
@@ -185,7 +187,7 @@ app.post('/start-call', async (req, res) => {
 });
 
 // === ЗАВЕРШЕНИЕ ЗВОНКА ===
-app.post('/end-call', (req, res) => {
+app.post('/end-call',cors(), (req, res) => {
   const { callSid } = req.body;
   if (activeIntervals.has(callSid)) {
     clearInterval(activeIntervals.get(callSid));
