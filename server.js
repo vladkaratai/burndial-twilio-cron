@@ -23,6 +23,8 @@ app.use(cors());
 app.use(bodyParser.urlencoded({ extended: false }));
 app.use(bodyParser.json());
 
+// Хранилище для активных таймеров списания
+// Ключ - CallSid, Значение - intervalId
 const activeIntervals = new Map();
 
 // === 1. Выдача токена для Voice SDK v2 ===
@@ -48,8 +50,9 @@ app.get('/token-c', async (req, res) => {
 
 // === 2. Входящий звонок от пользователя A на номер B ===
 app.post('/incoming-call', async (req, res) => {
-  const from = req.body.From;
-  const calledNumber = req.body.To;
+  const from = req.body.From; // Номер пользователя A
+  const calledNumber = req.body.To; // Номер Twilio, на который позвонили
+  const parentCallSid = req.body.CallSid; // Уникальный ID звонка от A к Twilio
 
   const twimlResponse = new twiml.VoiceResponse();
 
@@ -66,18 +69,10 @@ app.post('/incoming-call', async (req, res) => {
       return res.type('text/xml').send(twimlResponse.toString());
     }
 
-    // 2. Найти создателя
-    const { data: creator, error: crErr } = await supabase
-      .from('creators')
-      .select('phone')
-      .eq('id', serviceNumber.creator_id)
-      .single();
-    if (crErr || !creator) {
-      twimlResponse.say('System error.');
-      twimlResponse.hangup();
-      return res.type('text/xml').send(twimlResponse.toString());
-    }
+    const pricePerMinute = serviceNumber.price_per_minute || 3;
 
+    // 2. Найти создателя (опционально, если не используется далее)
+    
     // 3. Проверить баланс звонящего
     const { data: user, error: userErr } = await supabase
       .from('customer_balances')
@@ -89,23 +84,28 @@ app.post('/incoming-call', async (req, res) => {
       twimlResponse.hangup();
       return res.type('text/xml').send(twimlResponse.toString());
     }
-
+    
     const balance = Number(user.balance);
-    const pricePerMinute = serviceNumber.price_per_minute || 3;
     if (balance < pricePerMinute) {
-      twimlResponse.say('No more credits.');
+      twimlResponse.say('You have insufficient funds to make this call.');
       twimlResponse.hangup();
       return res.type('text/xml').send(twimlResponse.toString());
     }
 
-    // ✅ Соединяем A с клиентом C напрямую через <Dial>
-    console.log(`[ProxyCall] A=${from} → client:C`);
-
+    // :white_check_mark: Соединяем A с клиентом C, используя statusCallback
+    console.log(`[ProxyCall] A=${from} → client:C. Setting up status callback.`);
+    
     twimlResponse.say('Connecting you to the creator...');
+    
+    // Формируем URL для коллбэка, передавая нужные данные
+    const callbackUrl = `/call-status-handler?caller=${encodeURIComponent(from)}&price=${pricePerMinute}`;
+
     const dial = twimlResponse.dial({
       callerId: process.env.TWILIO_NUMBER,
       timeout: 60,
-      record: 'do-not-record'
+      // :white_check_mark: Вот магия:
+      statusCallback: callbackUrl,
+      statusCallbackEvent: 'answered completed', // Уведомлять, когда ответили и когда завершили
     });
     dial.client('C');
 
@@ -113,23 +113,66 @@ app.post('/incoming-call', async (req, res) => {
 
   } catch (err) {
     console.error('Error in /incoming-call:', err);
-    twimlResponse.say('System error.');
+    twimlResponse.say('A system error occurred.');
     twimlResponse.hangup();
     return res.type('text/xml').send(twimlResponse.toString());
   }
 });
 
-// === Вспомогательные функции ===
-async function getUserCredits(phone) {
-  const { data, error } = await supabase
-    .from('customer_balances')
-    .select('balance')
-    .eq('phone_number', phone)
-    .single();
-  return error || !data ? 0 : Number(data.balance);
-}
 
-async function chargeUser(phone, price = 3) {
+// === 3. НОВЫЙ ЕДИНЫЙ ОБРАБОТЧИК СТАТУСА ЗВОНКА ===
+app.post('/call-status-handler', async (req, res) => {
+  const { CallSid, CallStatus } = req.body;
+  const { caller, price } = req.query;
+  const pricePerMinute = Number(price);
+
+  console.log(`[StatusCallback] CallSid: ${CallSid}, Status: ${CallStatus}, Caller: ${caller}`);
+
+  // Событие: клиент C поднял трубку
+  if (CallStatus === 'in-progress') {
+    console.log(`[Billing] Starting billing for ${caller} on call ${CallSid}`);
+    
+    // Сразу списываем за первую минуту
+    const charged = await chargeUser(caller, pricePerMinute);
+    if (!charged) {
+      console.log(`[Billing] Initial charge failed for ${caller}. Terminating call.`);
+      client.calls(CallSid).update({ status: 'completed' });
+      return res.sendStatus(200);
+    }
+    
+    // Запускаем таймер списания каждую минуту (60000 мс)
+    const intervalId = setInterval(async () => {
+      const success = await chargeUser(caller, pricePerMinute);
+      if (!success) {
+        console.log(`[Billing] Insufficient funds for ${caller}. Terminating call ${CallSid}.`);
+        // Останавливаем таймер
+        clearInterval(intervalId);
+        activeIntervals.delete(CallSid);
+        // Принудительно завершаем звонок через REST API
+        await client.calls(CallSid).update({ status: 'completed' });
+      } else {
+        console.log(`[Billing] Charged ${pricePerMinute} from ${caller} for call ${CallSid}.`);
+      }
+    }, 60 * 1000); // 60 секунд
+
+    activeIntervals.set(CallSid, intervalId);
+  }
+
+  // Событие: звонок завершен (любой стороной)
+  if (CallStatus === 'completed' || CallStatus === 'failed' || CallStatus === 'no-answer' || CallStatus === 'canceled') {
+    if (activeIntervals.has(CallSid)) {
+      clearInterval(activeIntervals.get(CallSid));
+      activeIntervals.delete(CallSid);
+      console.log(`[Billing] Call ${CallSid} ended. Billing timer stopped.`);
+    }
+  }
+
+  res.sendStatus(200);
+});
+
+
+// === Вспомогательные функции (без изменений) ===
+async function chargeUser(phone, amount = 3) {
   const { data: user, error: userErr } = await supabase
     .from('customer_balances')
     .select('id, balance')
@@ -140,8 +183,11 @@ async function chargeUser(phone, price = 3) {
     console.error('[SUPABASE] User not found for charging', userErr);
     return false;
   }
-  if (Number(user.balance) < price) return false;
-  const newBalance = Number(user.balance) - price;
+  if (Number(user.balance) < amount) {
+    console.log(`[CREDITS] Not enough balance for ${phone}. Has ${user.balance}, needs ${amount}`);
+    return false;
+  }
+  const newBalance = Number(user.balance) - amount;
 
   const { error } = await supabase
     .from('customer_balances')
@@ -153,53 +199,13 @@ async function chargeUser(phone, price = 3) {
     return false;
   }
 
-  console.log(`[CREDITS] Списано ${price} у ${phone}, остаток ${newBalance}`);
+  console.log(`[CREDITS] Charged ${amount} from ${phone}, new balance is ${newBalance}`);
   return true;
 }
 
-// === НОВЫЙ РОУТ ===
-app.post('/start-call',cors(), async (req, res) => {
-  console.log('📩 /start-call body:', req.body);
-  const { callSid, caller, pricePerInterval = 3 } = req.body;
-  const intervalMs = 30 * 1000; // 30 секунд
-
-  // Проверяем баланс
-  const balance = await getUserCredits(caller);
-  if (balance < pricePerInterval) {
-    return res.status(402).json({ error: 'Недостаточно кредитов' });
-  }
-
-  // Запускаем таймер списания
-  const intervalId = setInterval(async () => {
-    const balance = await getUserCredits('+14482360473');
-    if (balance >= pricePerInterval) {
-      await chargeUser('+14482360473', pricePerInterval);
-      console.log(`Списано ${pricePerInterval} кредитов у ${caller}`);
-    } else {
-      console.log(`Недостаточно кредитов у ${'+14482360473'}. Завершаем звонок.`);
-      clearInterval(intervalId);
-      activeIntervals.delete(callSid);
-      // Завершить звонок (необязательно)
-    }
-  }, intervalMs);
-
-  activeIntervals.set(callSid, intervalId);
-  res.json({ success: true });
-});
-
-// === ЗАВЕРШЕНИЕ ЗВОНКА ===
-app.post('/end-call',cors(), (req, res) => {
-  const { callSid } = req.body;
-  if (activeIntervals.has(callSid)) {
-    clearInterval(activeIntervals.get(callSid));
-    activeIntervals.delete(callSid);
-    console.log(`Звонок ${callSid} завершён, таймер остановлен.`);
-  }
-  res.sendStatus(200);
-});
 
 // === Запуск сервера ===
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-  console.log(`🚀 Server запущен на http://localhost:${PORT}`);
+  console.log(`:rocket: Server running on http://localhost:${PORT}`);
 });
