@@ -83,7 +83,6 @@ app.post('/incoming-call', async (req, res) => {
     })
       .client({
         statusCallback: 'https://burndial-twilio-cron.onrender.com/call-status',
-        statusCallbackMethod: 'POST',
         statusCallbackEvent: ['initiated', 'ringing', 'answered', 'completed']
       }, 'C');
     return res.type('text/xml').send(twimlResponse.toString());
