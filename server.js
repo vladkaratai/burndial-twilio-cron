@@ -109,7 +109,7 @@ app.post('/call-status', (req, res) => {
       console.log('Call initiated - ringing started');
       // Call initiated
       break;
-    case 'answered'
+    case 'answered':
         console.log('Call answered by client C!');
 
   // Получаем номер клиента A из параметров запроса
