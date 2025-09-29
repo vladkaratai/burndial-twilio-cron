@@ -79,9 +79,6 @@ app.post('/incoming-call', async (req, res) => {
       callerId: process.env.TWILIO_NUMBER,
       timeout: 60,
       statusCallback: callbackUrl,
-      statusCallbackMethod: 'POST',
-      // ИЗМЕНЕНО: Явно указываем Twilio присылать события 'answered' и 'completed'.
-      // Это ключ к решению: сервер получит уведомление, как только клиент C ответит.
       statusCallbackEvent: 'answered completed', 
     })
       .client({
