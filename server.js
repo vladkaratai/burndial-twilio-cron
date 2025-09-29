@@ -124,7 +124,7 @@ app.post('/incoming-call', async (req, res) => {
   }
 });
 
-pp.post('/call-status', (req, res) => {
+app.post('/call-status', (req, res) => {
   const callStatus = req.body.CallStatus; // 'initiated', 'ringing', 'in-progress', 'completed'
   const callSid = req.body.CallSid;
   const from = req.body.From;
