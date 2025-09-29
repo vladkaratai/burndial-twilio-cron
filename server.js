@@ -91,7 +91,7 @@ app.post('/incoming-call', async (req, res) => {
     return res.type('text/xml').send(twimlResponse.toString());
   }
 });
-app.post('/call-status', (req, res) => {
+app.post('/call-status', async(req, res) => {
   const callStatus = req.body.CallStatus; // 'initiated', 'ringing', 'in-progress', 'completed'
   const callSid = req.body.CallSid;
   const from = req.body.From;
