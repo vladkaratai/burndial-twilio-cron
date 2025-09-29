@@ -30,6 +30,7 @@ app.use(bodyParser.json());
 
 const activeIntervals = new Map();
 const subscribers = new Set();
+const activeCalls = new Map()
 
 app.get('/events', (req, res) => {
   // Установите все заголовки до flushHeaders()
@@ -165,6 +166,11 @@ app.post('/call-status-handler', async (req, res) => {
       return res.sendStatus(200);
     }
 
+    activeCalls.set(CallSid, {
+      a: CallSid, // или другой идентификатор для A-стороны
+      c: 'C'      // для C-стороны
+    });
+
     const intervalId = setInterval(async () => {
       console.log(`[Billing Tick] Charging ${pricePerMinute} credits for call ${CallSid}`);
       const ok = await chargeUser(caller, pricePerMinute);
@@ -217,6 +223,8 @@ app.post('/call-status-handler', async (req, res) => {
       activeIntervals.delete(CallSid);
       console.log(`[Timer] Call ${CallSid} ended. Billing timer stopped.`);
     }
+        activeCalls.delete(CallSid);
+
   }
 
   res.sendStatus(200);
