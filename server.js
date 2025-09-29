@@ -78,8 +78,6 @@ app.post('/incoming-call', async (req, res) => {
     const dial = twimlResponse.dial({
       callerId: process.env.TWILIO_NUMBER,
       timeout: 60,
-      statusCallback: callbackUrl,
-      statusCallbackEvent: 'answered completed', 
     })
       .client({
         statusCallback: 'https://burndial-twilio-cron.onrender.com/call-status',
