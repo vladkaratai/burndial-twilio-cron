@@ -122,35 +122,29 @@ app.post('/post-call', (req, res) => {
 app.post('/call-status', async (req, res) => {
   const callSid = req.body.CallSid;
   const callStatus = req.body.CallStatus;
-   const caller = req.body.From; // Берём номер звонящего из Twilio
+  const caller = req.body.From; // номер звонящего
   const pricePerInterval = 3; // 3 кредита за 30 секунд
   const intervalMs = 30 * 1000; // 30 секунд
-  // const caller = req.query.caller;
-  // const pricePerMinute = parseFloat(req.query.price) || 3;
 
   console.log(`[CALL-STATUS] CallSid=${callSid}, Status=${callStatus}, Caller=${caller}`);
 
-  if (callStatus === 'in-progress' || callStatus === 'answered') {
-    console.log(`[CALL] Разговор начался. Caller=${caller}`);
-    // await chargeUser(caller, pricePerMinute);
-const initialCharge = await chargeUser(caller, pricePerInterval);
+  if (callStatus === 'answered' || callStatus === 'in-progress') {
+    // Снимаем сразу первый платёж
+    const initialCharge = await chargeUser(caller, pricePerInterval);
     if (!initialCharge) {
-      // Баланса нет — завершаем звонок сразу
-      try { await client.calls(callSid).update({ status: 'completed' }); } catch(e){}
+      console.log(`[CALL] У ${caller} нет кредитов. Завершаем звонок ${callSid}`);
+      try { await client.calls(callSid).update({ status: 'completed' }); } catch(e){ console.warn(e.message); }
       return res.sendStatus(200);
     }
-    // Таймер списания поминутно
+
+    // Таймер списания каждые 30 секунд
     const intervalId = setInterval(async () => {
       const credits = await getUserCredits(caller);
-      if (credits >= pricePerMinute) {
-        await chargeUser(caller, pricePerMinute);
+      if (credits >= pricePerInterval) {
+        await chargeUser(caller, pricePerInterval);
       } else {
         console.log(`[CALL] У ${caller} кончились кредиты. Завершаем звонок ${callSid}`);
-        try {
-          await client.calls(callSid).update({ status: 'completed' });
-        } catch (e) {
-          console.warn('Failed to hangup call:', e.message);
-        }
+        try { await client.calls(callSid).update({ status: 'completed' }); } catch(e){ console.warn(e.message); }
         clearInterval(intervalId);
         activeIntervals.delete(callSid);
       }
@@ -159,6 +153,7 @@ const initialCharge = await chargeUser(caller, pricePerInterval);
     activeIntervals.set(callSid, intervalId);
   }
 
+  // Завершение звонка
   if (['completed', 'busy', 'no-answer', 'failed'].includes(callStatus)) {
     if (activeIntervals.has(callSid)) {
       clearInterval(activeIntervals.get(callSid));
