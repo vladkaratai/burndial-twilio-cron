@@ -156,6 +156,7 @@ async function chargeUser(phone, price = 3) {
 
 // === НОВЫЙ РОУТ ===
 app.post('/start-call', async (req, res) => {
+  console.log('📩 /start-call body:', req.body);
   const { callSid, caller, pricePerInterval = 3 } = req.body;
   const intervalMs = 30 * 1000; // 30 секунд
 
