@@ -117,10 +117,21 @@ app.post('/call-status', (req, res) => {
       console.log('Call answered by client C!');
       // This is when the WebRTC client answers the call
       // You can trigger notifications, update database, etc.
+      const intervalId = setInterval(async () => {
+        console.log(`[Call Active Tick] Call ${callSid} is live. This is where periodic billing would occur.`);
+      }, 5000); // 5 seconds interval
+      
+      activeIntervals.set(callSid, intervalId);
       break;
     case 'completed':
-      console.log('Call completed');
       // Call ended
+      console.log('Call completed');
+      // Stop the interval when call ends
+      if (activeIntervals.has(callSid)) {
+        clearInterval(activeIntervals.get(callSid));
+        activeIntervals.delete(callSid);
+        console.log(`[Timer] Call ${callSid} ended. Logging timer stopped.`);
+      }
       break;
   }
   res.status(200).send('OK');
