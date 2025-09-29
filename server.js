@@ -183,6 +183,7 @@ app.post('/call-status-handler', async (req, res) => {
     
     // Запускаем таймер списания каждую минуту (60000 мс)
     const intervalId = setInterval(async () => {
+      console.log('HELLO ')
       const success = await chargeUser(caller, pricePerMinute);
       if (!success) {
         console.log(`[Billing] Insufficient funds for ${caller}. Terminating call ${CallSid}.`);
@@ -194,7 +195,7 @@ app.post('/call-status-handler', async (req, res) => {
       } else {
         console.log(`[Billing] Charged ${pricePerMinute} from ${caller} for call ${CallSid}.`);
       }
-    }, 60 * 1000); // 60 секунд
+    }, 10 * 1000); // 60 секунд
 
     activeIntervals.set(CallSid, intervalId);
   }
