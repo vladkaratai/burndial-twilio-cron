@@ -121,7 +121,7 @@ app.post('/call-status', (req, res) => {
 
   // Проверяем баланс клиента A
   try {
-    const {  user, error: userErr } = await supabase
+    const {  data:user, error: userErr } = await supabase
       .from('customer_balances')
       .select('id, balance')
       .eq('phone_number', caller)
