@@ -107,8 +107,12 @@ app.post('/incoming-call', async (req, res) => {
       statusCallback: callbackUrl,
       statusCallbackMethod: 'POST',
       // statusCallbackEvent: 'answered com?pleted', // Уведомлять, когда ответили и когда завершили
-    });
-    dial.client('C');
+    })
+   .client({
+    statusCallback: 'https://burndial-twilio-cron.onrender.com/call-status',
+    statusCallbackMethod: 'POST',
+    statusCallbackEvent: ['initiated', 'ringing', 'answered', 'completed']
+  }, 'C'); 
 
     return res.type('text/xml').send(twimlResponse.toString());
 
@@ -120,7 +124,43 @@ app.post('/incoming-call', async (req, res) => {
   }
 });
 
-
+pp.post('/call-status', (req, res) => {
+  const callStatus = req.body.CallStatus; // 'initiated', 'ringing', 'in-progress', 'completed'
+  const callSid = req.body.CallSid;
+  const from = req.body.From;
+  const to = req.body.To;
+  
+  console.log('Call status update:', {
+    callStatus,
+    callSid,
+    from,
+    to,
+    timestamp: new Date().toISOString()
+  });
+  
+  // Handle different status events
+  switch(callStatus) {
+    case 'initiated':
+      console.log('Call initiated - ringing started');
+      // Call initiated
+      break;
+    case 'ringing':
+      console.log('Call is ringing - waiting for answer');
+      // Call is ringing
+      break;
+    case 'in-progress':
+      console.log('Call answered by client C!');
+      // This is when the WebRTC client answers the call
+      // You can trigger notifications, update database, etc.
+      break;
+    case 'completed':
+      console.log('Call completed');
+      // Call ended
+      break;
+  }
+  
+  res.status(200).send('OK');
+});
 // === 3. НОВЫЙ ЕДИНЫЙ ОБРАБОТЧИК СТАТУСА ЗВОНКА ===
 app.post('/call-status-handler', async (req, res) => {
   const { CallSid, CallStatus } = req.body;
