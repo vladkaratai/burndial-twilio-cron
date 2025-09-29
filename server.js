@@ -122,15 +122,23 @@ app.post('/post-call', (req, res) => {
 app.post('/call-status', async (req, res) => {
   const callSid = req.body.CallSid;
   const callStatus = req.body.CallStatus;
-  const caller = req.query.caller;
-  const pricePerMinute = parseFloat(req.query.price) || 3;
+   const caller = req.body.From; // Берём номер звонящего из Twilio
+  const pricePerInterval = 3; // 3 кредита за 30 секунд
+  const intervalMs = 30 * 1000; // 30 секунд
+  // const caller = req.query.caller;
+  // const pricePerMinute = parseFloat(req.query.price) || 3;
 
   console.log(`[CALL-STATUS] CallSid=${callSid}, Status=${callStatus}, Caller=${caller}`);
 
-  if (callStatus === 'answered') {
+  if (callStatus === 'in-progress' || callStatus === 'answered') {
     console.log(`[CALL] Разговор начался. Caller=${caller}`);
-    await chargeUser(caller, pricePerMinute);
-
+    // await chargeUser(caller, pricePerMinute);
+const initialCharge = await chargeUser(caller, pricePerInterval);
+    if (!initialCharge) {
+      // Баланса нет — завершаем звонок сразу
+      try { await client.calls(callSid).update({ status: 'completed' }); } catch(e){}
+      return res.sendStatus(200);
+    }
     // Таймер списания поминутно
     const intervalId = setInterval(async () => {
       const credits = await getUserCredits(caller);
@@ -146,7 +154,7 @@ app.post('/call-status', async (req, res) => {
         clearInterval(intervalId);
         activeIntervals.delete(callSid);
       }
-    }, 60 * 1000);
+    }, intervalMs);
 
     activeIntervals.set(callSid, intervalId);
   }
@@ -183,8 +191,10 @@ async function chargeUser(phone, price = 3) {
     console.error('[SUPABASE] User not found for charging', userErr);
     return false;
   }
+  if (Number(user.balance) < price) return false;
+  const newBalance = Number(user.balance) - price;
 
-  const newBalance = Math.max(0, Number(user.balance) - price);
+  // const newBalance = Math.max(0, Number(user.balance) - price);
 
   const { error } = await supabase
     .from('customer_balances')
