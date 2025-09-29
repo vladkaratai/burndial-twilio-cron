@@ -196,19 +196,13 @@ app.post('/call-status-handler', async (req, res) => {
         const callData = activeCalls.get(CallSid);
 
         const warningUrl = 'https://jowevbtruckcidckpzjj.supabase.co/storage/v1/object/public/burdial-audio/2%20min%20warning.mp3';
-        if (callData) {
-          try {
-            await client.calls(callData.a).play({ url: warningUrl });
-            await client.calls(callData.c).play({ url: warningUrl });
-          } catch (err) {
-            console.error('Error playing TTS:', err);
-          }
-        }
+       
 
         // C (WebRTC клиент) получит SSE
         broadcastToC({
           type: 'warning',
-          message: 'You have one minute left. Please top up your balance.'
+          message: 'You have one minute left. Please top up your balance.',
+          audioUrl:warningUrl
         });
       }
 
