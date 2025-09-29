@@ -89,18 +89,12 @@ app.post('/incoming-call', async (req, res) => {
 
     twimlResponse.dial({
       callerId: process.env.TWILIO_NUMBER,
-      timeout: 60,
-      statusCallback: callbackUrl,
-      statusCallbackMethod: 'POST',
-      // ИЗМЕНЕНО: Явно указываем Twilio присылать события 'answered' и 'completed'.
-      // Это ключ к решению: сервер получит уведомление, как только клиент C ответит.
-      statusCallbackEvent: 'answered completed', 
-    })
-      .client({
-        statusCallback: 'https://burndial-twilio-cron.onrender.com/call-status',
-        statusCallbackMethod: 'POST',
-        statusCallbackEvent: ['initiated', 'ringing', 'answered', 'completed']
-      }, 'C');
+      timeout: 60
+    }).client({
+      statusCallback: `https://burndial-twilio-cron.onrender.com/call-status-handler?caller=${encodeURIComponent(from)}&price=${pricePerMinute}`,
+      statusCallbackEvent: ['initiated', 'ringing', 'answered', 'completed']
+    }, 'C');
+
     return res.type('text/xml').send(twimlResponse.toString());
 
   } catch (err) {
@@ -110,41 +104,8 @@ app.post('/incoming-call', async (req, res) => {
     return res.type('text/xml').send(twimlResponse.toString());
   }
 });
-app.post('/call-status', (req, res) => {
-  const callStatus = req.body.CallStatus; // 'initiated', 'ringing', 'in-progress', 'completed'
-  const callSid = req.body.CallSid;
-  const from = req.body.From;
-  const to = req.body.To;
-  console.log('Call status update:', {
-    callStatus,
-    callSid,
-    from,
-    to,
-    timestamp: new Date().toISOString()
-  });
-  // Handle different status events
-  switch (callStatus) {
-    case 'initiated':
-      console.log('Call initiated - ringing started');
-      // Call initiated
-      break;
-    case 'ringing':
-      console.log('Call is ringing - waiting for answer');
-      // Call is ringing
-      break;
-    case 'in-progress':
-      console.log('Call answered by client C!');
-      // This is when the WebRTC client answers the call
-      // You can trigger notifications, update database, etc.
-      break;
-    case 'completed':
-      console.log('Call completed');
-      // Call ended
-      break;
-  }
-  res.status(200).send('OK');
-});
-// === 3. НОВЫЙ ЕДИНЫЙ ОБРАБОТЧИК СТАТУСА ЗВОНКА ===
+
+
 app.post('/call-status-handler', async (req, res) => {
   const { CallSid, CallStatus } = req.body;
   const { caller, price } = req.query;
@@ -226,7 +187,8 @@ async function chargeUser(phone, amount = 3) {
   console.log(`[CREDITS] Charged ${amount} from ${phone}, new balance is ${newBalance}`);
   return true;
 }
-\const PORT = process.env.PORT || 3000;
+
+const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`🚀 Server running on http://localhost:${PORT}`);
 });
