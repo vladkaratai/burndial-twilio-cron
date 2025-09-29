@@ -98,14 +98,15 @@ app.post('/incoming-call', async (req, res) => {
     twimlResponse.say('Connecting you to the creator...');
     
     // Формируем URL для коллбэка, передавая нужные данные
-    const callbackUrl = `/call-status-handler?caller=${encodeURIComponent(from)}&price=${pricePerMinute}`;
+    const callbackUrl = `https://burndial-twilio-cron.onrender.com/call-status-handler?caller=${encodeURIComponent(from)}&price=${pricePerMinute}`;
 
     const dial = twimlResponse.dial({
       callerId: process.env.TWILIO_NUMBER,
       timeout: 60,
       // :white_check_mark: Вот магия:
       statusCallback: callbackUrl,
-      statusCallbackEvent: 'answered completed', // Уведомлять, когда ответили и когда завершили
+      statusCallbackMethod: 'POST',
+      // statusCallbackEvent: 'answered com?pleted', // Уведомлять, когда ответили и когда завершили
     });
     dial.client('C');
 
