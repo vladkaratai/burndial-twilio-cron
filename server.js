@@ -237,6 +237,154 @@ app.post('/incoming-call', async (req, res) => {
 });
 
 
+// app.post('/call-status-handler', async (req, res) => {
+//   const { CallSid, CallStatus } = req.body;
+//   const { caller, price } = req.query;
+//   const pricePerMinute = Number(price);
+
+//   console.log(`[StatusCallback] CallSid: ${CallSid}, Status: ${CallStatus}, Caller: ${caller}`);
+
+//   if (CallStatus === 'in-progress') {
+//     console.log(`[Billing] Call ${CallSid} answered. Charging immediately ${pricePerMinute} credits.`);
+
+//     const charged = await chargeUser(caller, pricePerMinute);
+//     if (!charged) {
+//       console.log(`[Billing] Not enough balance for first charge. Hanging up.`);
+//       try {
+//         await client.calls(CallSid).update({ status: 'completed' });
+//       } catch (err) {
+//         console.error('Error hanging up call:', err);
+//       }
+//       return res.sendStatus(200);
+//     }
+
+//     activeCalls.set(CallSid, {
+//       a: CallSid, // или другой идентификатор для A-стороны
+//       c: 'C'      // для C-стороны
+//     });
+
+//     const intervalId = setInterval(async () => {
+//       console.log(`[Billing Tick] Charging ${pricePerMinute} credits for call ${CallSid}`);
+//       const ok = await chargeUser(caller, pricePerMinute);
+//       if (!ok) {
+//         console.log(`[Billing] Balance empty. Hanging up call ${CallSid}.`);
+//         clearInterval(intervalId);
+//         activeIntervals.delete(CallSid);
+//         try {
+//           await client.calls(CallSid).update({ status: 'completed' });
+//         } catch (err) {
+//           console.error('Error hanging up call:', err);
+//         }
+//         return;
+//       }
+//       const { data: user } = await supabase
+//         .from('customer_balances')
+//         .select('balance')
+//         .eq('phone_number', caller)
+//         .single();
+
+//       // if (user && Number(user.balance) === 6) {
+//       //   console.log(`[ALERT] Caller ${caller} has only 6 credits.`);
+//       //   const callData = activeCalls.get(CallSid);
+
+//       //   const warningUrl = 'https://jowevbtruckcidckpzjj.supabase.co/storage/v1/object/public/burdial-audio/2%20min%20warning.mp3';
+       
+
+//       //   // C (WebRTC клиент) получит SSE
+//       //   broadcastToC({
+//       //     type: 'warning',
+//       //     message: 'You have one minute left. Please top up your balance.',
+//       //     audioUrl:warningUrl
+//       //   });
+//       // }
+
+//       if (user) {
+//   const currentBalance = Number(user.balance);
+//   const pricePerTick = pricePerMinute; // 3 кредита за 30 секунд
+//   const secondsPerTick = 30;
+//   const warningThresholdSeconds = 120; // 2 минуты в секундах
+
+//   // Сколько "тиков" можно оплатить оставшимся балансом
+//   const possibleTicksRemaining = Math.floor(currentBalance / pricePerTick);
+
+//   // Сколько секунд осталось
+//   const secondsRemaining = possibleTicksRemaining * secondsPerTick;
+
+//   // Проверяем, не подошло ли время к концу (осталось <= 2 минуты)
+//   if (secondsRemaining <= warningThresholdSeconds && secondsRemaining > 0) {
+//     // Проверяем, чтобы не отправлять предупреждение каждый тик,
+//     // если оставшееся время в пределах порога.
+//     // Для простоты можно использовать флаг в activeCalls, чтобы отправить один раз.
+//     const callInfo = activeCalls.get(CallSid);
+//     if (!callInfo.warningSent) { // Предполагаем, что warningSent устанавливается в true после отправки
+//       console.log(`[ALERT] Caller ${caller} has ${secondsRemaining} seconds left.`);
+      
+//       const warningUrl = 'https://jowevbtruckcidckpzjj.supabase.co/storage/v1/object/public/burdial-audio/2%20min%20warning.mp3';
+      
+//       // C (WebRTC клиент) получит SSE
+//       broadcastToC({
+//         type: 'warning',
+//         message: `You have ${Math.ceil(secondsRemaining / 60)} minute(s) left. Please top up your balance.`,
+//         audioUrl: warningUrl
+//       });
+
+//       // Обновляем информацию о вызове, чтобы не отправлять предупреждение снова
+//       callInfo.warningSent = true;
+//       activeCalls.set(CallSid, callInfo); // Обновляем запись в Map
+//     }
+//   }
+//   // --- Конец нового блока ---
+// }
+//   //     if (user && Number(user.balance) <= 0) {
+//   //   try {
+      
+//   //     await client.messages.create({
+//   //       body: 'Your credits have run out. Please top up your balance at: https://burndial.lovable.app/demo/topup',
+//   //       from: process.env.TWILIO_NUMBER,
+//   //       to: caller
+//   //     });
+//   //     console.log(`[SMS] Sent zero-credit warning to ${caller}`);
+//   //   } catch (smsErr) {
+//   //     console.error('[SMS] Failed to send zero-credit SMS:', smsErr);
+//   //   }
+//   // }
+//   if (user) {
+//   const currentBalance = Number(user.balance);
+//   const pricePerTick = pricePerMinute; // 3 кредита за 30 секунд
+
+//   // Проверяем, хватит ли баланса на *следующий* тик
+//   if (currentBalance < pricePerTick) {
+//     console.log(`[SMS ALERT] Caller ${caller} has ${currentBalance} credits, which is not enough for the next billing cycle (${pricePerTick} credits). SMS sent.`);
+//     try {
+//       await client.messages.create({
+//         body: 'Your credits are running out and will not cover the next billing cycle. Please top up your balance at: https://burndial.lovable.app/demo/topup',
+//         from: process.env.TWILIO_NUMBER,
+//         to: caller
+//       });
+//       console.log(`[SMS] Sent low-credit warning to ${caller}`);
+//     } catch (smsErr) {
+//       console.error('[SMS] Failed to send low-credit SMS:', smsErr);
+//     }
+//   }
+// }
+
+//     }, 30000); 
+
+//     activeIntervals.set(CallSid, intervalId);
+//   }
+
+//   if (['completed', 'failed', 'no-answer', 'canceled'].includes(CallStatus)) {
+//     if (activeIntervals.has(CallSid)) {
+//       clearInterval(activeIntervals.get(CallSid));
+//       activeIntervals.delete(CallSid);
+//       console.log(`[Timer] Call ${CallSid} ended. Billing timer stopped.`);
+//     }
+//         activeCalls.delete(CallSid);
+
+//   }
+
+//   res.sendStatus(200);
+// });
 app.post('/call-status-handler', async (req, res) => {
   const { CallSid, CallStatus } = req.body;
   const { caller, price } = req.query;
@@ -260,11 +408,73 @@ app.post('/call-status-handler', async (req, res) => {
 
     activeCalls.set(CallSid, {
       a: CallSid, // или другой идентификатор для A-стороны
-      c: 'C'      // для C-стороны
+      c: 'C',     // для C-стороны
+      warningSent: false, // Флаг для SSE предупреждения
+      smsSent: false      // Флаг для SMS предупреждения
     });
 
     const intervalId = setInterval(async () => {
       console.log(`[Billing Tick] Charging ${pricePerMinute} credits for call ${CallSid}`);
+      
+      // --- НОВАЯ ЛОГИКА: Проверка баланса *до* следующего списания ---
+      const { data: userBeforeCharge, error: userErrBefore } = await supabase
+        .from('customer_balances')
+        .select('balance')
+        .eq('phone_number', caller)
+        .single();
+
+      if (userErrBefore || !userBeforeCharge) {
+        console.error('[SUPABASE] User not found before charge for checks', userErrBefore);
+        // Если не удалось получить баланс, сложно отправить SMS или SSE, продолжаем списание как обычно
+        // Или можно завершить звонок, если это критическая ошибка.
+        // В данном случае, продолжаем.
+      } else {
+        const currentBalance = Number(userBeforeCharge.balance);
+        const pricePerTick = pricePerMinute; // 3 кредита за 30 секунд
+        const secondsPerTick = 30;
+        const warningThresholdSeconds = 120; // 2 минуты в секундах
+
+        // --- Проверка времени для SSE ---
+        const possibleTicksRemaining = Math.floor(currentBalance / pricePerTick);
+        const secondsRemaining = possibleTicksRemaining * secondsPerTick;
+
+        const callInfo = activeCalls.get(CallSid);
+        if (secondsRemaining <= warningThresholdSeconds && secondsRemaining > 0 && !callInfo.warningSent) {
+          console.log(`[ALERT] Caller ${caller} has ${secondsRemaining} seconds left.`);
+          
+          const warningUrl = 'https://jowevbtruckcidckpzjj.supabase.co/storage/v1/object/public/burdial-audio/2%20min%20warning.mp3';
+          
+          broadcastToC({
+            type: 'warning',
+            message: `You have ${Math.ceil(secondsRemaining / 60)} minute(s) left. Please top up your balance.`,
+            audioUrl: warningUrl
+          });
+
+          callInfo.warningSent = true;
+          activeCalls.set(CallSid, callInfo);
+        }
+
+        // --- Проверка баланса для SMS ---
+        // Проверяем, хватит ли баланса на *следующий* тик
+        if (currentBalance < pricePerTick && !callInfo.smsSent) { // Добавлен флаг, чтобы отправить SMS только один раз
+          console.log(`[SMS ALERT] Caller ${caller} has ${currentBalance} credits, which is not enough for the next billing cycle (${pricePerTick} credits). SMS sent.`);
+          try {
+            await client.messages.create({
+              body: 'Your credits are running out and will not cover the next billing cycle. Please top up your balance at: https://burndial.lovable.app/demo/topup',
+              from: process.env.TWILIO_NUMBER,
+              to: caller
+            });
+            console.log(`[SMS] Sent low-credit warning to ${caller}`);
+            callInfo.smsSent = true; // Устанавливаем флаг
+            activeCalls.set(CallSid, callInfo); // Обновляем запись в Map
+          } catch (smsErr) {
+            console.error('[SMS] Failed to send low-credit SMS:', smsErr);
+          }
+        }
+      }
+      // --- КОНЕЦ НОВОЙ ЛОГИКИ ---
+
+      // Теперь производим списание
       const ok = await chargeUser(caller, pricePerMinute);
       if (!ok) {
         console.log(`[Billing] Balance empty. Hanging up call ${CallSid}.`);
@@ -277,98 +487,18 @@ app.post('/call-status-handler', async (req, res) => {
         }
         return;
       }
-      const { data: user } = await supabase
-        .from('customer_balances')
-        .select('balance')
-        .eq('phone_number', caller)
-        .single();
 
-      // if (user && Number(user.balance) === 6) {
-      //   console.log(`[ALERT] Caller ${caller} has only 6 credits.`);
-      //   const callData = activeCalls.get(CallSid);
-
-      //   const warningUrl = 'https://jowevbtruckcidckpzjj.supabase.co/storage/v1/object/public/burdial-audio/2%20min%20warning.mp3';
-       
-
-      //   // C (WebRTC клиент) получит SSE
-      //   broadcastToC({
-      //     type: 'warning',
-      //     message: 'You have one minute left. Please top up your balance.',
-      //     audioUrl:warningUrl
-      //   });
+      // Старая проверка баланса <= 0 (оставлена, но может быть закомментирована, если не нужна)
+      // const { data: userAfterCharge } = await supabase
+      //   .from('customer_balances')
+      //   .select('balance')
+      //   .eq('phone_number', caller)
+      //   .single();
+      // if (userAfterCharge && Number(userAfterCharge.balance) <= 0) {
+      //   // ... старый код для SMS при нулевом балансе ...
       // }
 
-      if (user) {
-  const currentBalance = Number(user.balance);
-  const pricePerTick = pricePerMinute; // 3 кредита за 30 секунд
-  const secondsPerTick = 30;
-  const warningThresholdSeconds = 120; // 2 минуты в секундах
-
-  // Сколько "тиков" можно оплатить оставшимся балансом
-  const possibleTicksRemaining = Math.floor(currentBalance / pricePerTick);
-
-  // Сколько секунд осталось
-  const secondsRemaining = possibleTicksRemaining * secondsPerTick;
-
-  // Проверяем, не подошло ли время к концу (осталось <= 2 минуты)
-  if (secondsRemaining <= warningThresholdSeconds && secondsRemaining > 0) {
-    // Проверяем, чтобы не отправлять предупреждение каждый тик,
-    // если оставшееся время в пределах порога.
-    // Для простоты можно использовать флаг в activeCalls, чтобы отправить один раз.
-    const callInfo = activeCalls.get(CallSid);
-    if (!callInfo.warningSent) { // Предполагаем, что warningSent устанавливается в true после отправки
-      console.log(`[ALERT] Caller ${caller} has ${secondsRemaining} seconds left.`);
-      
-      const warningUrl = 'https://jowevbtruckcidckpzjj.supabase.co/storage/v1/object/public/burdial-audio/2%20min%20warning.mp3';
-      
-      // C (WebRTC клиент) получит SSE
-      broadcastToC({
-        type: 'warning',
-        message: `You have ${Math.ceil(secondsRemaining / 60)} minute(s) left. Please top up your balance.`,
-        audioUrl: warningUrl
-      });
-
-      // Обновляем информацию о вызове, чтобы не отправлять предупреждение снова
-      callInfo.warningSent = true;
-      activeCalls.set(CallSid, callInfo); // Обновляем запись в Map
-    }
-  }
-  // --- Конец нового блока ---
-}
-  //     if (user && Number(user.balance) <= 0) {
-  //   try {
-      
-  //     await client.messages.create({
-  //       body: 'Your credits have run out. Please top up your balance at: https://burndial.lovable.app/demo/topup',
-  //       from: process.env.TWILIO_NUMBER,
-  //       to: caller
-  //     });
-  //     console.log(`[SMS] Sent zero-credit warning to ${caller}`);
-  //   } catch (smsErr) {
-  //     console.error('[SMS] Failed to send zero-credit SMS:', smsErr);
-  //   }
-  // }
-  if (user) {
-  const currentBalance = Number(user.balance);
-  const pricePerTick = pricePerMinute; // 3 кредита за 30 секунд
-
-  // Проверяем, хватит ли баланса на *следующий* тик
-  if (currentBalance < pricePerTick) {
-    console.log(`[SMS ALERT] Caller ${caller} has ${currentBalance} credits, which is not enough for the next billing cycle (${pricePerTick} credits). SMS sent.`);
-    try {
-      await client.messages.create({
-        body: 'Your credits are running out and will not cover the next billing cycle. Please top up your balance at: https://burndial.lovable.app/demo/topup',
-        from: process.env.TWILIO_NUMBER,
-        to: caller
-      });
-      console.log(`[SMS] Sent low-credit warning to ${caller}`);
-    } catch (smsErr) {
-      console.error('[SMS] Failed to send low-credit SMS:', smsErr);
-    }
-  }
-}
-
-    }, 30000); 
+    }, 30000); // 30 секунд
 
     activeIntervals.set(CallSid, intervalId);
   }
@@ -379,13 +509,11 @@ app.post('/call-status-handler', async (req, res) => {
       activeIntervals.delete(CallSid);
       console.log(`[Timer] Call ${CallSid} ended. Billing timer stopped.`);
     }
-        activeCalls.delete(CallSid);
-
+    activeCalls.delete(CallSid);
   }
 
   res.sendStatus(200);
 });
-
 async function chargeUser(phone, amount = 3) {
   const { data: user, error: userErr } = await supabase
     .from('customer_balances')
