@@ -84,7 +84,7 @@ app.get('/token-c', async (req, res) => {
 
 app.post('/connect-client', (req, res) => {
   const vr = new twiml.VoiceResponse();
-const longTExt =  `The Future of Artificial Intelligence: Transforming Our World
+const longText =  `The Future of Artificial Intelligence: Transforming Our World
 Artificial Intelligence has rapidly evolved from a concept confined to science fiction novels to an integral part of our daily lives. As we stand at the threshold of what many experts call the fourth industrial revolution, it's crucial to understand how AI is reshaping every aspect of human existence, from healthcare and education to transportation and entertainment.
 The journey of artificial intelligence began in the 1950s when computer scientists first envisioned machines that could think and learn like humans. Early pioneers like Alan Turing laid the theoretical groundwork, proposing that machines could be created to exhibit intelligent behavior equivalent to, or indistinguishable from, that of a human. This concept, known as the Turing Test, remains a benchmark for measuring AI capabilities even today.
 For decades, AI development proceeded slowly, marked by periods of optimism followed by what researchers called "AI winters" – times when funding dried up and progress stagnated. However, the turn of the millennium brought unprecedented advances in computing power, data storage, and algorithm development that finally enabled the realization of many AI dreams.
