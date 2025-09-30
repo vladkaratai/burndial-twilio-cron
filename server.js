@@ -335,22 +335,38 @@ app.post('/call-status-handler', async (req, res) => {
   }
   // --- Конец нового блока ---
 }
-      if (user && Number(user.balance) <= 0) {
-        setTimeout(async() => {
-    try {
+  //     if (user && Number(user.balance) <= 0) {
+  //   try {
       
+  //     await client.messages.create({
+  //       body: 'Your credits have run out. Please top up your balance at: https://burndial.lovable.app/demo/topup',
+  //       from: process.env.TWILIO_NUMBER,
+  //       to: caller
+  //     });
+  //     console.log(`[SMS] Sent zero-credit warning to ${caller}`);
+  //   } catch (smsErr) {
+  //     console.error('[SMS] Failed to send zero-credit SMS:', smsErr);
+  //   }
+  // }
+  if (user) {
+  const currentBalance = Number(user.balance);
+  const pricePerTick = pricePerMinute; // 3 кредита за 30 секунд
+
+  // Проверяем, хватит ли баланса на *следующий* тик
+  if (currentBalance < pricePerTick) {
+    console.log(`[SMS ALERT] Caller ${caller} has ${currentBalance} credits, which is not enough for the next billing cycle (${pricePerTick} credits). SMS sent.`);
+    try {
       await client.messages.create({
-        body: 'Your credits have run out. Please top up your balance at: https://burndial.lovable.app/demo/topup',
+        body: 'Your credits are running out and will not cover the next billing cycle. Please top up your balance at: https://burndial.lovable.app/demo/topup',
         from: process.env.TWILIO_NUMBER,
         to: caller
       });
-      console.log(`[SMS] Sent zero-credit warning to ${caller}`);
-      
+      console.log(`[SMS] Sent low-credit warning to ${caller}`);
     } catch (smsErr) {
-      console.error('[SMS] Failed to send zero-credit SMS:', smsErr);
+      console.error('[SMS] Failed to send low-credit SMS:', smsErr);
     }
-  }, 30000)
   }
+}
 
     }, 30000); 
 
