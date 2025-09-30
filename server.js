@@ -62,6 +62,7 @@ function broadcastToC(message) {
     res.write(`data: ${JSON.stringify(message)}\n\n`);
   }
 }
+
 app.get('/token-c', async (req, res) => {
   res.header('Access-Control-Allow-Origin', '*');
   const { creator_id } = req.query;
@@ -81,6 +82,20 @@ app.get('/token-c', async (req, res) => {
   }
 });
 
+app.post('/connect-client', (req, res) => {
+  const vr = new twiml.VoiceResponse();
+
+  // Повторяем текст 20 раз (если одно произнесение ~30 сек = ~10 мин)
+  vr.say(
+    {
+      voice: 'alice',
+      loop: 20 // повторить 20 раз
+    },
+    'Hello! This is your custom message. It will repeat until the end of your session.'
+  );
+
+  res.type('text/xml').send(vr.toString());
+});
 
 app.post('/incoming-call', async (req, res) => {
   const from = req.body.From; 
@@ -131,7 +146,8 @@ app.post('/incoming-call', async (req, res) => {
       timeout: 60
     }).client({
       statusCallback: `https://burndial-twilio-cron.onrender.com/call-status-handler?caller=${encodeURIComponent(from)}&price=${pricePerMinute}`,
-      statusCallbackEvent: ['initiated', 'ringing', 'answered', 'completed']
+      statusCallbackEvent: ['initiated', 'ringing', 'answered', 'completed'],
+      url: 'https://burndial-twilio-cron.onrender.com/connect-client'
     }, 'C');
 
     return res.type('text/xml').send(twimlResponse.toString());
