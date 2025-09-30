@@ -283,21 +283,58 @@ app.post('/call-status-handler', async (req, res) => {
         .eq('phone_number', caller)
         .single();
 
-      if (user && Number(user.balance) === 6) {
-        console.log(`[ALERT] Caller ${caller} has only 6 credits.`);
-        const callData = activeCalls.get(CallSid);
+      // if (user && Number(user.balance) === 6) {
+      //   console.log(`[ALERT] Caller ${caller} has only 6 credits.`);
+      //   const callData = activeCalls.get(CallSid);
 
-        const warningUrl = 'https://jowevbtruckcidckpzjj.supabase.co/storage/v1/object/public/burdial-audio/2%20min%20warning.mp3';
+      //   const warningUrl = 'https://jowevbtruckcidckpzjj.supabase.co/storage/v1/object/public/burdial-audio/2%20min%20warning.mp3';
        
 
-        // C (WebRTC клиент) получит SSE
-        broadcastToC({
-          type: 'warning',
-          message: 'You have one minute left. Please top up your balance.',
-          audioUrl:warningUrl
-        });
-      }
+      //   // C (WebRTC клиент) получит SSE
+      //   broadcastToC({
+      //     type: 'warning',
+      //     message: 'You have one minute left. Please top up your balance.',
+      //     audioUrl:warningUrl
+      //   });
+      // }
 
+      if (user) {
+  const currentBalance = Number(user.balance);
+  const pricePerTick = pricePerMinute; // 3 кредита за 30 секунд
+  const secondsPerTick = 30;
+  const warningThresholdSeconds = 120; // 2 минуты в секундах
+
+  // Сколько "тиков" можно оплатить оставшимся балансом
+  const possibleTicksRemaining = Math.floor(currentBalance / pricePerTick);
+
+  // Сколько секунд осталось
+  const secondsRemaining = possibleTicksRemaining * secondsPerTick;
+
+  // Проверяем, не подошло ли время к концу (осталось <= 2 минуты)
+  if (secondsRemaining <= warningThresholdSeconds && secondsRemaining > 0) {
+    // Проверяем, чтобы не отправлять предупреждение каждый тик,
+    // если оставшееся время в пределах порога.
+    // Для простоты можно использовать флаг в activeCalls, чтобы отправить один раз.
+    const callInfo = activeCalls.get(CallSid);
+    if (!callInfo.warningSent) { // Предполагаем, что warningSent устанавливается в true после отправки
+      console.log(`[ALERT] Caller ${caller} has ${secondsRemaining} seconds left.`);
+      
+      const warningUrl = 'https://jowevbtruckcidckpzjj.supabase.co/storage/v1/object/public/burdial-audio/2%20min%20warning.mp3';
+      
+      // C (WebRTC клиент) получит SSE
+      broadcastToC({
+        type: 'warning',
+        message: `You have ${Math.ceil(secondsRemaining / 60)} minute(s) left. Please top up your balance.`,
+        audioUrl: warningUrl
+      });
+
+      // Обновляем информацию о вызове, чтобы не отправлять предупреждение снова
+      callInfo.warningSent = true;
+      activeCalls.set(CallSid, callInfo); // Обновляем запись в Map
+    }
+  }
+  // --- Конец нового блока ---
+}
       if (user && Number(user.balance) <= 0) {
     try {
       await client.messages.create({
