@@ -220,7 +220,7 @@ app.post('/twilio/call-status', twilioWebhook, async (req, res) => {
       activeCalls.set(primaryCallSid, {
         caller: customerPhoneNumber,
         pricePerMinute,
-        // startTime больше не нужен
+        startTime: Date.now(),
         lastCheckedMinute: 0,
         warningPlayed: false
       });
@@ -242,6 +242,7 @@ app.post('/twilio/call-status', twilioWebhook, async (req, res) => {
 
     if (!call || !call.caller) {
       console.error(`[CALL_STATUS_CHARGE_ERROR] Caller not found in activeCalls for ${primaryCallSid}. Cannot charge.`);
+      // Все равно вызываем cleanup, чтобы не оставлять "мусорных" интервалов
       cleanupCall(primaryCallSid);
       return res.sendStatus(200);
     }
@@ -251,7 +252,6 @@ app.post('/twilio/call-status', twilioWebhook, async (req, res) => {
 
     const elapsedSec = parseInt(CallDuration, 10);
     const factualMinutes = Math.max(1, Math.ceil(elapsedSec / 60));
-    // Используем lastCheckedMinute для защиты от перерасхода
     billedMinutes = Math.min(factualMinutes, call.lastCheckedMinute > 0 ? call.lastCheckedMinute : factualMinutes);
     console.log(`[CALL_STATUS_CHARGE] Calculated: elapsedSec=${elapsedSec}, factualMinutes=${factualMinutes}, billedMinutes=${billedMinutes}`);
 
@@ -265,6 +265,7 @@ app.post('/twilio/call-status', twilioWebhook, async (req, res) => {
     } else {
       console.log(`[CALL_STATUS_CHARGE_SUCCESS] ✅ Billed ${totalAmount} for ${billedMinutes} minutes for ${callerToCharge}`);
     }
+    // ВЫЗЫВАЕМ CLEANUP ТОЛЬКО ЗДЕСЬ, В САМОМ КОНЦЕ
     cleanupCall(primaryCallSid);
   }
 
@@ -278,6 +279,7 @@ async function monitorCallByMinute(primaryCallSid) {
   const call = activeCalls.get(primaryCallSid);
   if (!call) {
     console.log(`[MONITOR] Call ${primaryCallSid} not found in activeCalls. Stopping monitoring.`);
+    // Если звонка уже нет в activeCalls, нужно убедиться, что интервал тоже будет удален
     if (activeIntervals.has(primaryCallSid)) {
         clearInterval(activeIntervals.get(primaryCallSid));
         activeIntervals.delete(primaryCallSid);
@@ -286,12 +288,6 @@ async function monitorCallByMinute(primaryCallSid) {
   }
 
   try {
-    // ================== КЛЮЧЕВОЕ ИЗМЕНЕНИЕ ==================
-    // Получаем текущую длительность звонка напрямую от Twilio API
-    const callDetails = await twilioClient.calls(primaryCallSid).fetch();
-    const elapsedSec = parseInt(callDetails.duration || '0', 10);
-    // =======================================================
-
     const { data: balanceData, error: balErr } = await supabase.from('customer_balances').select('balance').eq('phone_number', call.caller).single();
 
     if (balErr || !balanceData) {
@@ -301,27 +297,27 @@ async function monitorCallByMinute(primaryCallSid) {
 
     const currentBalance = Number(balanceData.balance);
     const maxAffordableMinutes = Math.floor(currentBalance / call.pricePerMinute);
-    // Используем точное время от Twilio
-    const currentMinute = Math.max(1, Math.ceil(elapsedSec / 60));
+    const elapsedSec = Math.floor((Date.now() - call.startTime) / 1000);
+    const currentMinute = Math.ceil(elapsedSec / 60);
 
-    console.log(`[MONITOR] Call ${primaryCallSid}: Caller: ${call.caller}, Balance: ${currentBalance}, Max Mins: ${maxAffordableMinutes}, True Elapsed Sec: ${elapsedSec}`);
+    console.log(`[MONITOR] Call ${primaryCallSid}: Caller: ${call.caller}, Balance: ${currentBalance}, Max Mins: ${maxAffordableMinutes}, Elapsed Sec: ${elapsedSec}`);
     
     if (currentMinute > maxAffordableMinutes) {
       console.log(`[MONITOR_TIMEOUT] Call ${primaryCallSid} exceeding max minutes (${currentMinute} > ${maxAffordableMinutes}). Hanging up.`);
       try {
         await twilioClient.calls(primaryCallSid).update({ url: `${process.env.DOMAIN_NAME}/twiml/timeout`, method: 'POST' });
+        // ================== ИЗМЕНЕНИЕ ==================
+        // УБИРАЕМ cleanupCall ОТСЮДА!
+        // cleanupCall(primaryCallSid);
+        // ================================================
+        // Также нужно остановить интервал, чтобы не было повторных попыток сбросить звонок
         if (activeIntervals.has(primaryCallSid)) {
             clearInterval(activeIntervals.get(primaryCallSid));
             activeIntervals.delete(primaryCallSid);
             console.log(`[MONITOR_TIMEOUT] Stopped monitoring interval for ${primaryCallSid} after sending hangup command.`);
         }
       } catch (e) {
-        // Ловим ошибку, если звонок уже завершен, пока мы отправляли команду
-        if (e.code === 21220) { // Call is not in-progress
-            console.log(`[MONITOR_TIMEOUT] Call ${primaryCallSid} was already completed. No action needed.`);
-        } else {
-            console.error(`[MONITOR_TIMEOUT_ERROR] Failed to hangup call ${primaryCallSid}:`, e.message);
-        }
+        console.error(`[MONITOR_TIMEOUT_ERROR] Failed to hangup call ${primaryCallSid}:`, e.message);
       }
     } else {
       call.lastCheckedMinute = maxAffordableMinutes;
