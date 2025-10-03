@@ -83,8 +83,8 @@ app.post('/twiml/timeout', (req, res) => {
   console.log(`[TWIML_ENDPOINT] /twiml/timeout requested. CallSid: ${req.body.CallSid}`);
   const response = new twiml.VoiceResponse();
   response.say({ voice: 'alice', language: 'en-US' }, 'Your time is up. Thank you for the call.');
-  response.pause({ length: 5 });
-  response.hangup();
+  response.pause({length: 5});
+//   response.hangup();
   res.type('text/xml').send(response.toString());
 });
 
